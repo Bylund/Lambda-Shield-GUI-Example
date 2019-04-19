@@ -20,6 +20,10 @@
     http://www.bylund-automotive.com/
     
     info@bylund-automotive.com
+    
+    Version history:
+    2018-01-20        v1.0.0        First release.
+    2019-04-19        v1.0.1        Published on Github.
 */
 
 //Define included headers.
@@ -364,7 +368,7 @@ void loop() {
     
   }
 
-  //Increment serial output counter and delay for next cycle. The PID requires to be responsive but we don't need to flud the serial port.
+  //Increment serial output counter and delay for next cycle. The PID requires to be responsive but we don't need to flood the serial port.
   serial_counter++;
   delay(10);
 
