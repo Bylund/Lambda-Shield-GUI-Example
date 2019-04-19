@@ -20,9 +20,6 @@
     http://www.bylund-automotive.com/
     
     info@bylund-automotive.com
-
-    Revision history:
-    2018-01-20        Rev. 1        First release.
 */
 
 //Define included headers.
@@ -135,9 +132,6 @@ int Heater_PID_Control(int input) {
 
 //Function to update values.
 void UpdateValues() {
-
-  //Read CJ125 diagnostic register from SPI.
-  CJ125_Status = COM_SPI(CJ125_DIAG_REG_REQUEST);
 
   //Update CJ125 diagnostic register from SPI.
   CJ125_Status = COM_SPI(CJ125_DIAG_REG_REQUEST);
