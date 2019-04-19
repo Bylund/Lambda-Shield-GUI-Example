@@ -1,7 +1,7 @@
 /*
     Example code compatible with the Lambda Shield for Arduino and GUI frontend.
     
-    Copyright (C) 2018 Bylund Automotive AB
+    Copyright (C) 2018 - 2019 Bylund Automotive AB
     
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
