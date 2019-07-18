@@ -25,6 +25,7 @@
     2018-01-20        v1.0.0        First release.
     2019-04-19        v1.0.1        Published on Github.
     2019-06-26        v1.1.0        Adjusted PID regulation of heater.
+    2019-07-18        v1.2.0        Code optimization.
 */
 
 //Define included headers.
@@ -97,7 +98,7 @@ uint16_t COM_SPI(uint16_t TX_data) {
 }
 
 //Temperature regulating software (PID).
-int Heater_PID_Control(int input) {
+int CalculateHeaterOutput(int input) {
   
   //Calculate error term.
   int error = adcValue_UR_Optimal - input;
@@ -135,20 +136,8 @@ int Heater_PID_Control(int input) {
   
 }
 
-//Function to update values.
-void UpdateValues() {
-
-  //Update CJ125 diagnostic register from SPI.
-  CJ125_Status = COM_SPI(CJ125_DIAG_REG_REQUEST);
-
-  //Update analog inputs.
-  adcValue_UA = analogRead(UA_ANALOG_INPUT_PIN);
-  adcValue_UR = analogRead(UR_ANALOG_INPUT_PIN);
-  adcValue_UB = analogRead(UB_ANALOG_INPUT_PIN);
-}
-
 //Function to transfer current values to front end.
-void UpdateFrontEnd() {
+void UpdateSerialOutput() {
   
   //Output values.
   Serial.print("STATUS,");
@@ -165,12 +154,77 @@ void UpdateFrontEnd() {
   
 }
 
+//Function to read inputs and update values.
+void UpdateInputs() {
+
+  //Update CJ125 diagnostic register from SPI.
+  CJ125_Status = COM_SPI(CJ125_DIAG_REG_REQUEST);
+
+  //Update analog inputs.
+  adcValue_UA = analogRead(UA_ANALOG_INPUT_PIN);
+  adcValue_UR = analogRead(UR_ANALOG_INPUT_PIN);
+  adcValue_UB = analogRead(UB_ANALOG_INPUT_PIN);
+}
+
+//Function to update user interfaces and output.
+void UpdateUI() {
+  
+  //Local variables.
+  const float AirFuelRatioOctane = 14.70;
+  
+  //Sensor is not active.
+  if (HeaterStatus == 0) {
+    
+    //Output LED's.
+    digitalWrite(LED_STATUS_POWER, LOW);  
+    digitalWrite(LED_STATUS_HEATER, LOW);  
+
+    //Output serial data.
+    UpdateSerialOutput();
+
+  }
+  
+  //Sensor is heating up.
+  if (HeaterStatus == 1) {
+     
+    //Output LED's.
+    digitalWrite(LED_STATUS_POWER, HIGH);  
+    digitalWrite(LED_STATUS_HEATER, HIGH);  
+
+    //Output serial data.
+    UpdateSerialOutput();
+
+    //Delay for flashing LED's.
+    delay(500);
+
+    //Output LED's.
+    digitalWrite(LED_STATUS_HEATER, LOW);
+
+    //Delay for flashing LED's.
+    delay(500);
+    
+  }
+
+  //Sensor is measuring.
+  if (HeaterStatus == 2) {
+
+    //Output LED's.
+    digitalWrite(LED_STATUS_POWER, HIGH);  
+    digitalWrite(LED_STATUS_HEATER, HIGH);
+    
+    //Output serial data.
+    UpdateSerialOutput();
+
+  }
+
+}
+
 //Function to set up device for operation.
 void setup() {
   
   //Set up serial communication.
   Serial.begin(9600);
-
+  
   //Set up SPI.
   SPI.begin();  /* Note, SPI will disable the bult in LED*/
   SPI.setClockDivider(SPI_CLOCK_DIV128);
@@ -183,11 +237,18 @@ void setup() {
   pinMode(LED_STATUS_HEATER, OUTPUT);
   pinMode(HEATER_OUTPUT_PIN, OUTPUT);
 
-  //Set initial values.
+  //Start main function.
+  start();
+
+}
+
+void start() {
+  
+  //Reset initial values.
   digitalWrite(CJ125_NSS_PIN, HIGH);
   digitalWrite(LED_STATUS_POWER, LOW);
   digitalWrite(LED_STATUS_HEATER, LOW);
-  analogWrite(HEATER_OUTPUT_PIN, 0); /* PWM is off before we know power status.*/
+  analogWrite(HEATER_OUTPUT_PIN, 0);
 
   //Start of operation. (Test LED's).
   digitalWrite(LED_STATUS_POWER, HIGH);
@@ -195,14 +256,7 @@ void setup() {
   delay(200);
   digitalWrite(LED_STATUS_POWER, LOW);
   digitalWrite(LED_STATUS_HEATER, LOW);
-
-  //Start main function.
-  start();
-
-}
-
-void start() {
-
+  
   //Update heater status to off.
   HeaterStatus = 0;
   
@@ -210,17 +264,14 @@ void start() {
   while (adcValue_UB < UBAT_MIN || CJ125_Status != CJ125_DIAG_REG_STATUS_OK) {
 
     //Update Values.
-    UpdateValues();
+    UpdateInputs();
 
-    //Update Front End.
-    UpdateFrontEnd();
+    //Update frontends.
+    UpdateUI();
     
     //Delay.
     delay(100);
   }
-
-  //Start of operation. (Start Power LED).
-  digitalWrite(LED_STATUS_POWER, HIGH);
 
   //Set CJ125 in calibration mode.
   COM_SPI(CJ125_INIT_REG1_MODE_CALIBRATE);
@@ -253,17 +304,10 @@ void start() {
   while (t < 5 && adcValue_UB > UBAT_MIN) {
 
     //Update Values.
-    UpdateValues();
+    UpdateInputs();
 
-    //Update Front End.
-    UpdateFrontEnd();
-    
-    //Flash Heater LED in condensation phase.
-    digitalWrite(LED_STATUS_HEATER, HIGH);  
-    delay(500);
-          
-    digitalWrite(LED_STATUS_HEATER, LOW);
-    delay(500);
+    //Update frontends.
+    UpdateUI();
 
     t += 1;
     
@@ -271,54 +315,25 @@ void start() {
 
   //Ramp up phase, +0.4V / s until 100% PWM from 8.5V.
   float UHeater = 8.5;
-  while (UHeater < 13.0 && adcValue_UB > UBAT_MIN) {
+  while (UHeater < 13.0 && adcValue_UB > UBAT_MIN && adcValue_UR > adcValue_UR_Optimal) {
 
     //Update Values.
-    UpdateValues();
+    UpdateInputs();
 
-    //Update Front End.
-    UpdateFrontEnd();
+    //Update frontends.
+    UpdateUI();
     
     //Set heater output during ramp up.
     CondensationPWM = (UHeater / SupplyVoltage) * 255;
       
-    if (CondensationPWM > 255) CondensationPWM = 255; /*If supply voltage is less than 13V, maximum is 100% PWM*/
+    if (CondensationPWM > 255) CondensationPWM = 255; /*If supply voltage is less than 13V, maximum is 100% duty cycle*/
 
     analogWrite(HEATER_OUTPUT_PIN, CondensationPWM);
-
-    //Flash Heater LED in condensation phase.
-    digitalWrite(LED_STATUS_HEATER, HIGH);
-    delay(500);
-      
-    digitalWrite(LED_STATUS_HEATER, LOW);
-    delay(500);
 
     //Increment Voltage.
     UHeater += 0.4;
       
   }
-
-  //Heat until temperature optimum is reached or exceeded (lower value is warmer).
-  while (adcValue_UR > adcValue_UR_Optimal && adcValue_UB > UBAT_MIN) {
-
-    //Update Values.
-    UpdateValues();
-
-    //Update Front End.
-    UpdateFrontEnd();
-    
-    //Flash Heater LED in condensation phase.
-    digitalWrite(LED_STATUS_HEATER, HIGH);
-    delay(500);
-      
-    digitalWrite(LED_STATUS_HEATER, LOW);
-    delay(500);
-
-  }
-
-  //Heating phase finished, hand over to PID-control. Turn on LED and turn off heater.
-  digitalWrite(LED_STATUS_HEATER, HIGH);
-  analogWrite(HEATER_OUTPUT_PIN, 0);
 
   //Update heater status to regulating.
   HeaterStatus = 2;
@@ -329,41 +344,28 @@ void start() {
 void loop() {
 
   //Update Values.
-  UpdateValues();
+  UpdateInputs();
 
   //Display on serial port at defined rate. Comma separate values, readable by frontends.
   if ( (100 / SERIAL_RATE) ==  serial_counter) {
 
     //Reset counter.
     serial_counter = 0;
-    
-    //Update Front End.
-    UpdateFrontEnd();
+
+    //Update frontends.
+    UpdateUI();
 
   }
 
   //Adjust PWM output by calculated PID regulation.
-  if (adcValue_UR < 500 || adcValue_UR_Optimal != 0 || adcValue_UB > UBAT_MIN) {
+  if (adcValue_UR < 500 && adcValue_UB > UBAT_MIN) {
     
     //Calculate and set new heater output.
-    HeaterOutput = Heater_PID_Control(adcValue_UR);
+    HeaterOutput = CalculateHeaterOutput(adcValue_UR);
     analogWrite(HEATER_OUTPUT_PIN, HeaterOutput);
     
   } else {
     
-    //Turn off heater if we are not in PID control.
-    HeaterOutput = 0;
-    analogWrite(HEATER_OUTPUT_PIN, HeaterOutput);
-    
-  }
-
-  //If power is lost, "reset" the device.
-  if (adcValue_UB < UBAT_MIN) {
-    
-    //Turn of status LEDs.
-    digitalWrite(LED_STATUS_POWER, LOW);
-    digitalWrite(LED_STATUS_HEATER, LOW);
-
     //Re-start() and wait for power.
     start();
     
