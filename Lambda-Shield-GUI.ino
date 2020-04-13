@@ -26,7 +26,6 @@
     2019-04-19        v1.0.1        Published on Github.
     2019-06-26        v1.1.0        Adjusted PID regulation of heater.
     2019-07-18        v1.2.0        Code optimization.
-    2019-07-18        v1.2.0        Code optimization.
     2020-04-12        v1.3.0        Modified serial output. 
 */
 
