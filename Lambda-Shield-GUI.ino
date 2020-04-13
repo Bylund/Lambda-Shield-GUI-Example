@@ -1,7 +1,7 @@
 /*
     Example code compatible with the Lambda Shield for Arduino and GUI frontend.
     
-    Copyright (C) 2018 - 2019 Bylund Automotive AB
+    Copyright (C) 2018 - 2020 Bylund Automotive AB
     
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -26,6 +26,8 @@
     2019-04-19        v1.0.1        Published on Github.
     2019-06-26        v1.1.0        Adjusted PID regulation of heater.
     2019-07-18        v1.2.0        Code optimization.
+    2019-07-18        v1.2.0        Code optimization.
+    2020-04-12        v1.3.0        Modified serial output. 
 */
 
 //Define included headers.
@@ -57,6 +59,7 @@
 //Define adjustable parameters.       
 #define           SERIAL_RATE                         10            /* Serial refresh rate in HZ (1-100)*/            
 #define           UBAT_MIN                            550           /* Minimum voltage (ADC value) on Ubat to operate */
+#define           hardwareId                          0x00          /* The hardwareId defines which hardware you are using. */
 
 //Global variables.
 int adcValue_UA = 0;                                                /* ADC value read from the CJ125 UA output pin */ 
@@ -139,18 +142,26 @@ int CalculateHeaterOutput(int input) {
 //Function to transfer current values to front end.
 void UpdateSerialOutput() {
   
+  //Calculate checksum.
+  uint16_t checksum = HeaterStatus + hardwareId + CJ125_Status + adcValue_UA + adcValue_UR + adcValue_UB;
+
+  //Assembled data.
+  String txString = (String)HeaterStatus;
+  txString += ",";
+  txString += (String)hardwareId;
+  txString += ",";
+  txString += (String)CJ125_Status;
+  txString += ",";
+  txString += (String)adcValue_UA;
+  txString += ",";
+  txString += (String)adcValue_UR;
+  txString += ",";
+  txString += (String)adcValue_UB;
+  txString += ",";
+  txString += (String)checksum;
+  
   //Output values.
-  Serial.print("STATUS,");
-  Serial.print(HeaterStatus);
-  Serial.print(",");
-  Serial.print(CJ125_Status);
-  Serial.print(",");
-  Serial.print(adcValue_UA);
-  Serial.print(",");
-  Serial.print(adcValue_UR);
-  Serial.print(",");
-  Serial.print(adcValue_UB);
-  Serial.print("\n\r");
+  Serial.println(txString);
   
 }
 
